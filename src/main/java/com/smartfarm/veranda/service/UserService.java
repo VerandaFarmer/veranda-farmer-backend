@@ -108,6 +108,7 @@ public class UserService {
                 .build();
     }
 
+    // 비밀번호 변경
     @Transactional
     public UserResponse changePassword(Long userId, ChangePasswordRequest request) {
         // 1. User 찾기
