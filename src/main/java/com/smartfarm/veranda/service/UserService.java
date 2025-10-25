@@ -10,7 +10,9 @@ import com.smartfarm.veranda.dto.response.UserResponse;
 import com.smartfarm.veranda.entity.User;
 import com.smartfarm.veranda.repository.UserRepository;
 
+import com.smartfarm.veranda.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtUtil jwtUtil;
 
     // 회원가입
     // 중간에 에러나면 자동 롤백을 위해 트랜잭션으로 개발
@@ -32,7 +36,7 @@ public class UserService {
         // 2. User 엔티티 생성
         User user = User.builder()
                 .email(request.getEmail())
-                .password(request.getPassword()) // 나중에 암호화
+                .password(passwordEncoder.encode(request.getPassword())) // 비밀번호 암호화
                 .nickname(request.getNickname())
                 .build();
 
@@ -49,24 +53,27 @@ public class UserService {
                 .build();
     }
 
-    // 로그인
+    // 로그인 (JWT 토큰 발급)
     @Transactional(readOnly = true) // 읽기 전용
     public LoginResponse login(LoginRequest request) {
         // 1. 이메일로 User 찾기
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new RuntimeException("이메일 또는 비밀번호가 일치하지 않습니다."));
 
-        // 2. 비밀번호 비교
-        if(!user.getPassword().equals(request.getPassword())) {
+        // 2. 비밀번호 비교, 암호화 비밀번호 비교
+        if(!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new RuntimeException("이메일 또는 비밀번호가 일치하지 않습니다.");
         }
 
-        // 3. LoginResponse 반환
+        // 3. 토큰 생성
+        String token = jwtUtil.generateToken(user.getUserId());
+
+        // 4. LoginResponse 반환
         return LoginResponse.builder()
                 .userId(user.getUserId())
                 .email(user.getEmail())
                 .nickname(user.getNickname())
-                .message("로그인 성공!")
+                .token(token)
                 .build();
     }
 
@@ -114,8 +121,8 @@ public class UserService {
         // 1. User 찾기
         User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("회원 없음"));
 
-        // 2. 현재 비밀번호 맞는지 확인
-        if(!user.getPassword().equals(request.getCurrentPassword())) {
+        // 2. 현재 비밀번호 맞는지 확인 (암호화된 비밀번호 비교)
+        if(!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
             throw new RuntimeException("비밀번호가 일치하지 않습니다.");
         }
 
@@ -123,9 +130,9 @@ public class UserService {
         if(!request.getNewPassword().equals(request.getConfirmPassword())) {
             throw new RuntimeException("새 비밀번호가 일치하지 않습니다.");
         }
-        user.setPassword(request.getNewPassword());
 
-        // 4. 저장
+        // 4. 새 비밀번호 암호화해서 저장
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         User updateUser = userRepository.save(user);
 
         // 5. UserResponse로 변환

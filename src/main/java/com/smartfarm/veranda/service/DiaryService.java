@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -50,16 +51,15 @@ public class DiaryService {
 
     // 전체 목록 조회
     @Transactional(readOnly = true)
-    public List<DiaryListResponse> getAllDiaries() {
-        List<Diary> diaries = diaryRepository.findAll();
+    public List<DiaryListResponse> getAllDiaries(Long userId) {
 
-        return diaries.stream()
-                .map(diary -> DiaryListResponse.builder()
-                        .diaryId(diary.getDiaryId())
-                        .diaryDate(diary.getDiaryDate())
-                        .imageUrl(diary.getImageUrl())
-                        .build())
-                .toList();
+        return diaryRepository.findByUser_UserId(userId).stream()
+                .map(diary -> new DiaryListResponse(
+                        diary.getDiaryId(),
+                        diary.getDiaryDate(),
+                        diary.getImageUrl()
+                ))
+                .collect(Collectors.toList());
     }
 
     // 상세 조회
@@ -81,9 +81,14 @@ public class DiaryService {
 
     // 수정
     @Transactional
-    public DiaryResponse updateDiary(Long diaryId, DiaryUpdateRequest request) {
+    public DiaryResponse updateDiary(Long diaryId, Long userId, DiaryUpdateRequest request) {
         // 1. 다이어리 조회
         Diary diary = diaryRepository.findById(diaryId).orElseThrow(() -> new RuntimeException("다이어리를 찾을 수 없습니다."));
+
+        // 본인 확인!
+        if (!diary.getUser().getUserId().equals(userId)) {
+            throw new RuntimeException("본인의 다이어리만 수정할 수 있습니다.");
+        }
 
         // 2. null이 아닐 때만 업데이트
         // content
@@ -113,9 +118,14 @@ public class DiaryService {
 
     // 삭제
     @Transactional
-    public void deleteDiary(Long diaryId) {
+    public void deleteDiary(Long diaryId, Long userId) {
         // 1. 다이어리 존제하는지 확인
         Diary diary = diaryRepository.findById(diaryId).orElseThrow(() -> new RuntimeException("다이어리를 찾을 수 없습니다."));
+
+        // 본인 확인!
+        if (!diary.getUser().getUserId().equals(userId)) {
+            throw new RuntimeException("본인의 다이어리만 삭제할 수 있습니다.");
+        }
 
         // 2. 삭제
         diaryRepository.delete(diary);
